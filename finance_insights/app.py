@@ -6,7 +6,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
 
-from data_loader import load_all_csvs, clean_transactions
+from data_loader import load_all_csvs, load_csv_from_bytes, clean_transactions
 from sample_data import generate_sample_data
 from analysis import (
     spending_by_category,
@@ -32,25 +32,55 @@ DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 
 
 @st.cache_data
-def load_data():
+def load_from_folder():
     df, files = load_all_csvs(DATA_DIR)
     if df is not None:
-        return df, files, False
-    # Fall back to sample data
-    df = generate_sample_data(months=12)
-    df = clean_transactions(df)
-    return df, [], True
+        return df, files
+    return None, []
 
 
-df, loaded_files, is_sample = load_data()
+def load_from_uploads(uploaded_files):
+    dfs = []
+    names = []
+    for f in uploaded_files:
+        try:
+            df = load_csv_from_bytes(f)
+            dfs.append(df)
+            names.append(f.name)
+        except Exception as e:
+            st.sidebar.error(f"Could not load {f.name}: {e}")
+    if dfs:
+        combined = pd.concat(dfs, ignore_index=True)
+        return clean_transactions(combined), names
+    return None, []
+
 
 # --- Sidebar ---
 st.sidebar.title("Finance Insights")
 
-if is_sample:
-    st.sidebar.warning("Using sample data. Drop Simplifi CSVs into `finance_insights/data/` and reload.")
+# CSV upload widget
+uploaded_files = st.sidebar.file_uploader(
+    "Upload Simplifi CSVs",
+    type=["csv"],
+    accept_multiple_files=True,
+    help="Export CSVs from Simplifi (web app → Transactions → download) and upload here.",
+)
+
+# Determine data source: uploads > folder > sample
+if uploaded_files:
+    df, loaded_files = load_from_uploads(uploaded_files)
+    is_sample = False
+    st.sidebar.success(f"Uploaded: {', '.join(loaded_files)}")
 else:
-    st.sidebar.success(f"Loaded: {', '.join(loaded_files)}")
+    folder_df, folder_files = load_from_folder()
+    if folder_df is not None:
+        df, loaded_files, is_sample = folder_df, folder_files, False
+        st.sidebar.success(f"Loaded from folder: {', '.join(loaded_files)}")
+    else:
+        df = generate_sample_data(months=12)
+        df = clean_transactions(df)
+        loaded_files, is_sample = [], True
+        st.sidebar.warning("Using sample data. Upload CSVs above or drop them into `data/` folder.")
 
 # Date range filter
 min_date = df["Date"].min().date()

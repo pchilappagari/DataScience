@@ -1,5 +1,6 @@
 """Load and parse Simplifi CSV exports."""
 
+import io
 import os
 import pandas as pd
 
@@ -45,6 +46,28 @@ def load_csv(filepath):
             raise ValueError(f"CSV missing required column: {col}. Found: {list(df.columns)}")
 
     # Add missing optional columns
+    for col in EXPECTED_COLUMNS:
+        if col not in df.columns:
+            df[col] = ""
+
+    return df[EXPECTED_COLUMNS]
+
+
+def load_csv_from_bytes(uploaded_file):
+    """Load a CSV from a Streamlit UploadedFile object."""
+    df = pd.read_csv(uploaded_file)
+
+    rename_map = {}
+    for col in df.columns:
+        lower = col.strip().lower()
+        if lower in COLUMN_ALIASES:
+            rename_map[col] = COLUMN_ALIASES[lower]
+    df = df.rename(columns=rename_map)
+
+    for col in ["Date", "Amount"]:
+        if col not in df.columns:
+            raise ValueError(f"CSV missing required column: {col}. Found: {list(df.columns)}")
+
     for col in EXPECTED_COLUMNS:
         if col not in df.columns:
             df[col] = ""
